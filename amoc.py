@@ -16,29 +16,30 @@ rds = 6.371e6
 fraco = np.array([0.16267, 0.22222, 0.21069])
 
 # box boundaries, in rad
-lati = np.array([-60.0, -30.0, 45.0, 80.0])*(np.pi/180.0)
+latia = np.array([-90.0, -30.0, 45.0, 90.0])*(np.pi/180.0)
+latio = np.array([-60.0, -30.0, 45.0, 80.0])*(np.pi/180.0)
 
 # sine of latitdues
-sinlati = np.sin(lati)
-sinlat = (sinlati[1:] + sinlati[:-1])/2
+sinlatia = np.sin(latia)
+sinlata = (sinlatia[1:] + sinlatia[:-1])/2
 
 # box mass centers, in rad
-lat = np.arcsin(sinlat)
+lata = np.arcsin(sinlata)
 
 # area of each atmospheric box, in square meter
-areaa = (2 * np.pi * rds**2)*np.diff(sinlati)
+areaa = (2 * np.pi * rds**2)*np.diff(sinlatia)
 
 # meridional distance between boxes, in meter
-ydis = rds*np.diff(lat)
+ydis = rds*np.diff(lata)
 
 # perimeter of boundaries, in meter
-perim = (2 * np.pi* rds)*np.cos(lati[1:-1])
+perim = (2 * np.pi* rds)*np.cos(latia[1:-1])
 
 # atmospheric heat capacities, in J/K
 ca = areaa * (5300 * 1004.0)
 
 # area of each oceanic box
-areao = areaa*fraco
+areao = np.diff(np.sin(latio))*(80.0*np.pi/180.0*rds**2)
 areao = np.array([*areao, areao[1]])
 
 # height of each oceanic box
@@ -70,11 +71,11 @@ class Amoc(bmode.BalanceModel):
         @property
         def lht(self):
             if '_lht' not in self.__dict__:
-                tc0 = (self['tam']*(lati[1] - lat[0])
-                    + self['tas']*(lat[1]-lati[1]))/(lat[1] - lat[0])
+                tc0 = (self['tam']*(latia[1] - lata[0])
+                    + self['tas']*(lata[1]-latia[1]))/(lata[1] - lata[0])
                 lht0 = lht(tc0, ydis[0])
-                tc1 = (self['tam']*(lati[2] - lat[2])
-                    + self['tan']*(lat[1]-lati[2]))/(lat[1] - lat[2])
+                tc1 = (self['tam']*(latia[2] - lata[2])
+                    + self['tan']*(lata[1]-latia[2]))/(lata[1] - lata[2])
                 lht1 = lht(tc1, ydis[1])
                 self._lht = np.array([lht0, lht1])
                 self.setflags(write=False)
@@ -85,7 +86,7 @@ class Amoc(bmode.BalanceModel):
             if '_amoc' not in self.__dict__:
                 phi = 1.5264e10*(8.0e-4*(self['son'] - self['sos'])
                     - 1.5e-4*(self['ton'] - self['tos']))
-                phi = max(0.0, phi)
+                phi = phi*(phi > 0)
                 self._amoc = phi
                 self.setflags(write=False)
             return self._amoc
@@ -186,20 +187,26 @@ class Amoc(bmode.BalanceModel):
             def _salt_amoc_n2d(state):
                 return state.amoc*state['son']
 
-    def run(self, ic:Mapping[str, float], nstep):
+    def run(self, ic:Mapping[str, float], nstep, nhist=100, nprint=1000):
+
+        time = np.arange(0, nstep, nhist)*self.dt
+
         ic = self.AmocState.from_dict(ic)
         states = self.AmocState(
-            shape=(len(self.AmocState._variables_), nstep),
+            shape=(len(self.AmocState._variables_), nstep//nhist),
             dtype=float
         )
 
         states[:, 0] = ic[:]
         for i, state in zip(range(1, nstep), self.iter_states(ic)):
-            states[:, i] = state[:]
-            if i%100 == 0:
+            qut, rmd = divmod(i, nhist)
+            if rmd == 0:
+                states[:, qut] = state
+            if i%nprint == 0:
                 print('*'*16)
                 print('NSTEP', i)
-        return states
+                print(state)
+        return time, states
 
 def main():
     ic_values = [4.777404031, 24.42876625, 2.66810894, 2.67598915, 34.40753555,
@@ -210,41 +217,44 @@ def main():
     NSEC_YR = 86400*365
     dt_yr = 0.01
 
-    dt, nstep = 0.01*NSEC_YR, int(3.0e5)
+    dt, nstep = dt_yr*NSEC_YR, int(3.0e5)
     scheme = 'rk4'
 
     model = Amoc(scheme=scheme, dt=dt)
-    states = model.run(ic=ic, nstep=nstep)
-    fig, (ax0, ax1) = plt.subplots(ncols=1, nrows=2)
+    time, states = model.run(ic=ic, nstep=nstep)
 
-    time = np.arange(nstep)*dt_yr
+    time /= NSEC_YR # in year
+
+    fig, (ax0, ax1, ax2) = plt.subplots(ncols=1, nrows=3)
+
 
     def txt2tex(txt):
         return f'${txt[0].capitalize()}_{txt[2]}^{txt[1]}$'
 
     colors = [plt.get_cmap("tab10")(i) for i in range(4)]
-    pstep = 100
-    pslice = slice(None, None, pstep)
+
     for i, v in enumerate(('tos', 'tom', 'ton', 'tod')):
-        ax0.plot(time[pslice], states[v][pslice], label=txt2tex(v),
+        ax0.plot(time, states[v], label=txt2tex(v),
             linestyle='--', color=colors[i])
     for i, v in enumerate(('tas', 'tam', 'tan')):
-        ax0.plot(time[pslice], states[v][pslice], label=txt2tex(v),
+        ax0.plot(time, states[v], label=txt2tex(v),
             color=colors[i])
     for i, v in enumerate(('sos', 'som', 'son', 'sod')):
-        ax1.plot(time[pslice], states[v][pslice], label=txt2tex(v),
+        ax1.plot(time, states[v], label=txt2tex(v),
             color=colors[i])
+
+    ax2.plot(time, states.amoc*1.0e-6)
 
     ax0.set_ylabel(r'Temperature (C$^\circ$)')
     ax1.set_ylabel(r'Salinity (psu)')
+    ax2.set_ylabel(r'$\Phi$ (10$^6$ Sv)')
     ax1.set_xlabel(r'Time (yr)')
 
     for ax in (ax0, ax1):
         ax.legend(ncol=2)
         ax.grid()
-    # ax = fig.gca()
-    # ax.plot('x', data=states)
-    # plt.draw()
+    ax2.grid()
+
     plt.show()
 
 if __name__ == '__main__':
