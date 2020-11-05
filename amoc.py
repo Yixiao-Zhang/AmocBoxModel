@@ -217,13 +217,23 @@ def main():
     NSEC_YR = 86400*365
     dt_yr = 0.01
 
-    dt, nstep = dt_yr*NSEC_YR, int(3.0e5)
+    dt, nstep = dt_yr*NSEC_YR, int(2.0e4)
     scheme = 'rk4'
 
+    # run until the equilibrium has been reached
     model = Amoc(scheme=scheme, dt=dt)
-    time, states = model.run(ic=ic, nstep=nstep)
+    time0, states0 = model.run(ic=ic, nstep=nstep)
 
-    time /= NSEC_YR # in year
+    # salinity drop experiment
+    ic1 = np.array(states0[:, -1])
+    ic1[Amoc.AmocState._variables_.index('son')] -= 0.7
+    ic1 = dict(zip(Amoc.AmocState._variables_, ic1))
+    time1, states1 = model.run(ic=ic1, nstep=nstep)
+
+    time1 += time0[-1]
+
+    for time in (time0, time1):
+        time /= NSEC_YR # in year
 
     fig, (ax0, ax1, ax2) = plt.subplots(ncols=1, nrows=3)
 
@@ -233,29 +243,31 @@ def main():
 
     colors = [plt.get_cmap("tab10")(i) for i in range(4)]
 
-    for i, v in enumerate(('tos', 'tom', 'ton', 'tod')):
-        ax0.plot(time, states[v], label=txt2tex(v),
-            linestyle='--', color=colors[i])
-    for i, v in enumerate(('tas', 'tam', 'tan')):
-        ax0.plot(time, states[v], label=txt2tex(v),
-            color=colors[i])
-    for i, v in enumerate(('sos', 'som', 'son', 'sod')):
-        ax1.plot(time, states[v], label=txt2tex(v),
-            color=colors[i])
+    for time, states in zip((time0, time1), (states0, states1)):
+        for i, v in enumerate(('tos', 'tom', 'ton', 'tod')):
+            ax0.plot(time, states[v], label=txt2tex(v),
+                linestyle='--', color=colors[i])
+        for i, v in enumerate(('tas', 'tam', 'tan')):
+            ax0.plot(time, states[v], label=txt2tex(v),
+                color=colors[i])
+        for i, v in enumerate(('sos', 'som', 'son', 'sod')):
+            ax1.plot(time, states[v], label=txt2tex(v),
+                color=colors[i])
 
-    ax2.plot(time, states.amoc*1.0e-6)
+        ax2.plot(time, states.amoc*1.0e-6, color=colors[0])
 
     ax0.set_ylabel(r'Temperature (C$^\circ$)')
     ax1.set_ylabel(r'Salinity (psu)')
     ax2.set_ylabel(r'$\Phi$ (10$^6$ Sv)')
-    ax1.set_xlabel(r'Time (yr)')
+    ax2.set_xlabel(r'Time (yr)')
 
     for ax in (ax0, ax1):
         ax.legend(ncol=2)
         ax.grid()
     ax2.grid()
 
-    plt.show()
+    plt.savefig('amoc.eps')
+    # plt.show()
 
 if __name__ == '__main__':
     main()
