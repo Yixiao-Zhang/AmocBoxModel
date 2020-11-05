@@ -68,6 +68,12 @@ class Amoc(bmode.BalanceModel):
                         'tas', 'tam', 'tan'
                     ]
 
+        def __getitem__(self, name):
+            if name in ('lht', 'amoc'):
+                return getattr(self, name)
+            else:
+                return super().__getitem__(name)
+
         @property
         def lht(self):
             if '_lht' not in self.__dict__:
@@ -99,8 +105,6 @@ class Amoc(bmode.BalanceModel):
         self.set_inertia(
             **dict(zip(self.AmocState._variables_, inertias))
         )
-
-        print(self.inertias)
 
         do_rad = True # radiative transfer
         do_srf_hlf = True # heat exchange between the ocean and the atmosphere
@@ -138,11 +142,17 @@ class Amoc(bmode.BalanceModel):
         if do_atm_ht:
             @self.add_flux(source='tam', sink='tas')
             def _aht_m2s(state):
-                return (perim[0])*((2.5e13/ydis[0])*(state['tam'] - state['tas']) + state.lht[0])
+                return (perim[0])*(
+                        (2.5e13/ydis[0])*(state['tam'] - state['tas'])
+                        + state.lht[0]
+                )
 
             @self.add_flux(source='tam', sink='tan')
             def _aht_m2n(state):
-                return (perim[1])*((2.5e13/ydis[1])*(state['tam'] - state['tan']) + state.lht[1])
+                return (perim[1])*(
+                    (2.5e13/ydis[1])*(state['tam'] - state['tan'])
+                    + state.lht[1]
+            )
 
         if do_salt_raise:
             @self.add_flux(source='sos', sink='som')
@@ -209,21 +219,25 @@ class Amoc(bmode.BalanceModel):
         return time, states
 
 def main():
-    ic_values = [4.777404031, 24.42876625, 2.66810894, 2.67598915, 34.40753555,
-        35.62585068, 34.92513657, 34.91130066, 4.67439556, 23.30437851, 0.94061828
+    ic_values = [4.777404031, 24.42876625, 2.66810894, 2.67598915,
+        34.40753555, 35.62585068, 34.92513657, 34.91130066, 4.67439556,
+        23.30437851, 0.94061828
     ]
     ic = dict(zip(Amoc.AmocState._variables_, ic_values))
 
     NSEC_YR = 86400*365
     dt_yr = 0.01
 
-    dt, nstep = dt_yr*NSEC_YR, int(2.0e4)
+    dt, nstep = dt_yr*NSEC_YR, int(5.0e5)
     scheme = 'rk4'
 
     # run until the equilibrium has been reached
     model = Amoc(scheme=scheme, dt=dt)
     time0, states0 = model.run(ic=ic, nstep=nstep)
 
+    print('=*16')
+    print('salinity drop experiment')
+    print('=*16')
     # salinity drop experiment
     ic1 = np.array(states0[:, -1])
     ic1[Amoc.AmocState._variables_.index('son')] -= 0.7
@@ -235,26 +249,32 @@ def main():
     for time in (time0, time1):
         time /= NSEC_YR # in year
 
-    fig, (ax0, ax1, ax2) = plt.subplots(ncols=1, nrows=3)
+    fig, (ax0, ax1, ax2) = plt.subplots(ncols=1, nrows=3, figsize=(8, 8))
 
-
+    # for legend
     def txt2tex(txt):
         return f'${txt[0].capitalize()}_{txt[2]}^{txt[1]}$'
 
+    # colors for different regions
     colors = [plt.get_cmap("tab10")(i) for i in range(4)]
 
-    for time, states in zip((time0, time1), (states0, states1)):
-        for i, v in enumerate(('tos', 'tom', 'ton', 'tod')):
-            ax0.plot(time, states[v], label=txt2tex(v),
-                linestyle='--', color=colors[i])
-        for i, v in enumerate(('tas', 'tam', 'tan')):
-            ax0.plot(time, states[v], label=txt2tex(v),
-                color=colors[i])
-        for i, v in enumerate(('sos', 'som', 'son', 'sod')):
-            ax1.plot(time, states[v], label=txt2tex(v),
-                color=colors[i])
+    # for plot
+    def xy(v):
+        return map(np.concatenate,
+            ((time0, time1), (states0[v], states1[v])))
 
-        ax2.plot(time, states.amoc*1.0e-6, color=colors[0])
+    for i, v in enumerate(('tos', 'tom', 'ton', 'tod')):
+        ax0.plot(*xy(v), label=txt2tex(v),
+            linestyle='--', color=colors[i])
+    for i, v in enumerate(('tas', 'tam', 'tan')):
+        ax0.plot(*xy(v), label=txt2tex(v),
+            color=colors[i])
+    for i, v in enumerate(('sos', 'som', 'son', 'sod')):
+        ax1.plot(*xy(v), label=txt2tex(v),
+            color=colors[i])
+
+    time, amoc = xy('amoc')
+    ax2.plot(time, amoc*1.0e-6, color=colors[0])
 
     ax0.set_ylabel(r'Temperature (C$^\circ$)')
     ax1.set_ylabel(r'Salinity (psu)')
@@ -266,6 +286,7 @@ def main():
         ax.grid()
     ax2.grid()
 
+    plt.tight_layout()
     plt.savefig('amoc.eps')
     # plt.show()
 

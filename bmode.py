@@ -1,3 +1,7 @@
+# -*- coding: utf-8 -*-
+'''A general and abstract framework for box models. The core idea is
+that the system is governed by the laws of conservation.
+'''
 
 from typing import AnyStr, Callable
 from collections import defaultdict
