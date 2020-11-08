@@ -40,25 +40,80 @@ class Lorenz63(bmode.BalanceModel):
             states[:, i] = state[:]
         return states
 
-def main():
+parameters = dict(sigma=10, rho=28, beta=8/3)
+
+def plot_traj():
     ic = dict(x=5.2, y=5.2, z=28)
-    parameters = dict(sigma=10, rho=28, beta=8/3)
     dt, nstep = 0.01, int(1.0e4)
     schemes = ('rk4', 'euler', 'ab2', 'leapfrog')
 
-    fig = plt.figure()
+    fig = plt.figure(figsize=(8, 8))
     for k, scheme in enumerate(schemes):
         model = Lorenz63(scheme=scheme, dt=dt, **parameters)
         states = model.run(ic=ic, nstep=nstep)
         ax = fig.add_subplot(2, 2, k+1, projection='3d')
 
-        ax.set_title(scheme)
+        ax.set_title(scheme.capitalize())
         ax.plot(*(states[v] for v in 'xyz'),
-            linewidth=0.5, marker='o', markersize=0.5)
+            linewidth=0.3, marker='o', markersize=0.2)
     # ax = fig.gca()
     # ax.plot('x', data=states)
     # plt.draw()
-    plt.show()
+    plt.tight_layout()
+    plt.savefig('schemes.eps')
+
+    # clearing
+    fig.clear()
+    plt.close(fig)
+
+def plot_sens():
+    fig, ax_matrix = plt.subplots(3, 3, figsize=(8, 6), sharex=True)
+
+    dt, nstep = 0.01, int(1.5e3)
+    time = np.arange(nstep)*dt
+    model = Lorenz63(dt=dt, **parameters)
+
+    ic0 = dict(x=50, y=50, z=50)
+
+    ref = model.run(ic=ic0, nstep=nstep)
+
+    for j, error in enumerate((0.01, 0.1, 1.0)):
+        ax_array = ax_matrix[:, j]
+        ic = {key:value+error for key, value in ic0.items()}
+        states = model.run(ic=ic, nstep=nstep)
+
+        tot_error = np.sum(np.abs(ref - states), axis=0)
+        time_error = np.where(tot_error > 6)[0][0]*dt
+
+        print(time_error)
+
+        for i, v in enumerate('xyz'):
+            ax = ax_array[i]
+            ax.plot(time, ref[v],
+                linewidth=0.3, marker='o', markersize=0.2, label='Reference')
+            ax.plot(time, states[v],
+                linewidth=0.3, marker='o', markersize=0.2, label='Perturbed')
+            ax.axvline(x=time_error, linestyle='--', color='k')
+            if j == 0:
+                ax.set_ylabel(v)
+            if (i, j) == (0, 0):
+                ax.legend()
+
+
+        ax_array[0].set_title(f'E$_i$ = {error:0.02f}')
+        ax_array[-1].set_xlabel('Time')
+
+
+    plt.tight_layout()
+    plt.savefig('butterfly.eps')
+
+    # clearing
+    fig.clear()
+    plt.close(fig)
+
+def main():
+    plot_traj()
+    plot_sens()
 
 if __name__ == '__main__':
     main()

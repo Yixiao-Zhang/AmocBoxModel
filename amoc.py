@@ -249,45 +249,54 @@ def main():
     for time in (time0, time1):
         time /= NSEC_YR # in year
 
-    fig, (ax0, ax1, ax2) = plt.subplots(ncols=1, nrows=3, figsize=(8, 8))
-
     # for legend
     def txt2tex(txt):
-        return f'${txt[0].capitalize()}_{txt[2]}^{txt[1]}$'
+        return f'${txt[0].capitalize()}_{txt[2].capitalize()}^{txt[1]}$'
 
     # colors for different regions
     colors = [plt.get_cmap("tab10")(i) for i in range(4)]
 
-    # for plot
-    def xy(v):
+    # the first 3000 years
+    def xy0(v):
+        nstep = 3000
+        return time0[:nstep], states0[v][:nstep]
+
+    # the whole 10000 years
+    def xy1(v):
         return map(np.concatenate,
             ((time0, time1), (states0[v], states1[v])))
 
-    for i, v in enumerate(('tos', 'tom', 'ton', 'tod')):
-        ax0.plot(*xy(v), label=txt2tex(v),
-            linestyle='--', color=colors[i])
-    for i, v in enumerate(('tas', 'tam', 'tan')):
-        ax0.plot(*xy(v), label=txt2tex(v),
-            color=colors[i])
-    for i, v in enumerate(('sos', 'som', 'son', 'sod')):
-        ax1.plot(*xy(v), label=txt2tex(v),
-            color=colors[i])
+    for j, xy in enumerate((xy0, xy1)):
 
-    time, amoc = xy('amoc')
-    ax2.plot(time, amoc*1.0e-6, color=colors[0])
+        fig, (ax0, ax1, ax2) = plt.subplots(ncols=1, nrows=3, figsize=(8, 8))
 
-    ax0.set_ylabel(r'Temperature (C$^\circ$)')
-    ax1.set_ylabel(r'Salinity (psu)')
-    ax2.set_ylabel(r'$\Phi$ (10$^6$ Sv)')
-    ax2.set_xlabel(r'Time (yr)')
+        for i, v in enumerate(('tos', 'tom', 'ton', 'tod')):
+            ax0.plot(*xy(v), label=txt2tex(v),
+                linestyle='--', color=colors[i])
+        for i, v in enumerate(('tas', 'tam', 'tan')):
+            ax0.plot(*xy(v), label=txt2tex(v),
+                color=colors[i])
+        for i, v in enumerate(('sos', 'som', 'son', 'sod')):
+            ax1.plot(*xy(v), label=txt2tex(v),
+                color=colors[i])
 
-    for ax in (ax0, ax1):
-        ax.legend(ncol=2)
-        ax.grid()
-    ax2.grid()
+        time, amoc = xy('amoc')
+        ax2.plot(time, amoc*1.0e-6, color=colors[0])
 
-    plt.tight_layout()
-    plt.savefig('amoc.eps')
+        ax0.set_ylabel(r'Temperature (C$^\circ$)')
+        ax1.set_ylabel(r'Salinity (psu)')
+        ax2.set_ylabel(r'$\Phi$ (10$^6$ Sv)')
+        ax2.set_xlabel(r'Time (yr)')
+
+        for ax in (ax0, ax1):
+            ax.legend(ncol=2)
+            ax.grid()
+        ax2.grid()
+
+        plt.tight_layout()
+        plt.savefig(f'amoc{j}.eps')
+        fig.clear()
+        plt.close(fig)
     # plt.show()
 
 if __name__ == '__main__':
